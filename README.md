@@ -1,11 +1,61 @@
 # Apple Music Mood Playlists
 
-Reads your Apple Music library, figures out each song's mood, and builds playlists like
-`Mood · Chill`, `Mood · Hard`, `Mood · Romantic` in the Music app. Runs on macOS.
+I have 656 songs in Apple Music and couldn't just say "play something chill" from my
+own library.
+
+479 of those 656 songs are labelled **Hip-Hop/Rap**. A gym banger and a 2 AM heartbreak
+track get the same genre tag. Shuffle gives you whiplash. Sorting 656 songs × 9 moods by
+hand would take hours, and the work goes stale every time you add music. Nobody does it
+twice.
+
+So I built a tool that reads the whole library, works out the mood of every song, and
+writes the playlists back into the Music app—where they sync straight to my iPhone.
+
+**Chill · Hard · Workout · Romantic · Sad · Feel Good · Party · Focus · Late Night**
+
+### How it works
 
 ```
-export   ->  tags (Last.fm)  ->  classify (rules + optional LLM)  ->  build (Music app)
+export   ->  tags (Last.fm)  ->  classify (rules + LLM)  ->  build (Music app)
 ```
+
+1. **Export** the library from the Music app via AppleScript (no Apple developer account,
+   no Apple Music API—just JavaScript for Automation talking to the Mac's Music app).
+2. **Tag** each song with crowd-sourced descriptors from Last.fm.
+3. **Classify** mood with an LLM, using Last.fm tags as hints. The LLM recognises songs
+   from title + artist in any language, so Bollywood and regional tracks aren't left out.
+   A song can land in up to 2 playlists, and contradictions are blocked (nothing is both
+   Sad and Party).
+4. **Build** the playlists in Music. Only playlists starting with `Mood ·` are ever
+   touched, so the rest of the library is safe.
+
+### What broke along the way
+
+- **Last.fm coverage was thin.** Tags existed for only 262 of 656 songs (40 %).
+  Bollywood and regional music had almost nothing, so rules built on tags alone missed
+  most of the library. The LLM fills the gap.
+- **Free-tier quota is brutal.** Gemini's free tier gave 20 requests/day. Retry logic
+  burned through the quota on retries, and the tool happily wrote a "finished" report
+  with 80 % of songs unsorted. Fix: detect daily-quota errors and stop instead of
+  retrying, cache every answer so the next run picks up where it left off, and write
+  nothing until every song is sorted.
+- **Retired models.** The Groq model I'd hardcoded got retired. Every batch returned a
+  404, and the tool kept retrying. Lesson: a bad API key or model name won't fix itself
+  on retry—stop right away.
+
+### Result
+
+655 of 656 songs sorted. The one it missed was literally a file named
+`Mix by audio-joiner.com` 💀
+
+```
+Hard 229 · Party 215 · Workout 174 · Late Night 136 · Chill 131
+Sad 115 · Romantic 110 · Feel Good 100 · Focus 20
+```
+
+Cost: **$0.** Last.fm and Groq are both free. Everything is cached, so next month only
+new songs get looked up. Wrong pick? Put a fix in `overrides.json` and it survives every
+rebuild.
 
 ## One-time setup (on your personal Mac)
 
